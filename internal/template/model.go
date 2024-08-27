@@ -31,3 +31,21 @@ const ModelMethod = `
 {{if .Doc -}}// {{.DocComment -}}{{end}}
 func ({{.GetBaseStructTmpl}}){{.MethodName}}({{.GetParamInTmpl}})({{.GetResultParamInTmpl}}){{.Body}}
 `
+
+const Filed = NotEditMark + `
+package {{.StructInfo.Package}}
+
+var {{.ModelStructName}}Fields = struct {
+	{{range .Fields -}}
+	{{if ne .ColumnName "" -}}
+    {{.Name}} string
+	{{end -}}
+    {{end -}}
+}{
+	{{range .Fields -}}
+	{{if ne .ColumnName "" -}}
+	{{.Name}}: "{{.ColumnName}}",
+	{{end -}}
+	{{end -}}
+}
+`

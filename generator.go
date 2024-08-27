@@ -274,6 +274,11 @@ func (g *Generator) Execute() {
 		panic("generate query code fail")
 	}
 
+	if err := g.generateFiledFile(); err != nil {
+		g.db.Logger.Error(context.Background(), "generate field code fail: %s", err)
+		panic("generate field code fail")
+	}
+
 	g.info("Generate code done.")
 }
 
@@ -518,6 +523,53 @@ func (g *Generator) generateModelFile() error {
 		return err
 	case <-pool.AsyncWaitAll():
 		g.fillModelPkgPath(modelOutPath)
+	}
+	return nil
+}
+
+// generateFiledFile generate model filed structures and save to file
+func (g *Generator) generateFiledFile() error {
+	if len(g.models) == 0 {
+		return nil
+	}
+
+	modelOutPath, err := g.getModelOutputPath()
+	if err != nil {
+		return err
+	}
+
+	errChan := make(chan error)
+	pool := pools.NewPool(concurrent)
+	for _, data := range g.models {
+		if data == nil {
+			continue
+		}
+		pool.Wait()
+		go func(data *generate.QueryStructMeta) {
+			defer pool.Done()
+
+			var buf bytes.Buffer
+			err = render(tmpl.Filed, &buf, data)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			modelFile := modelOutPath + data.FileName + ".field.gen.go"
+			err = g.output(modelFile, buf.Bytes())
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			g.info(fmt.Sprintf("generate filed file(table <%s> -> {%s.%s}): %s", data.TableName, data.StructInfo.Package, data.StructInfo.Type, modelFile))
+		}(data)
+	}
+	select {
+	case err = <-errChan:
+		return err
+	case <-pool.AsyncWaitAll():
+
 	}
 	return nil
 }
