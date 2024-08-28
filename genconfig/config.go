@@ -66,7 +66,7 @@ func (c *Config) Build(g *gen.Generator) (modelNames []string, joinTableConfig [
 						relationship.Type,
 						relationship.ModelFieldName,
 						targetMeta,
-						foreignKeyConfig(relationship.Target.ForeignKey, relationship.Target.References),
+						foreignKeyConfig(relationship.Type, relationship.Target.ForeignKey, relationship.Target.References),
 					))
 				} else {
 					if relationship.Join == nil {
@@ -105,11 +105,17 @@ func (c *Config) Build(g *gen.Generator) (modelNames []string, joinTableConfig [
 // hasOne    A.id   <--> B.A_id  foreignKey(B.A_id) reference (A.id)
 // HasMany   A.id   <--> B.A_id  foreignKey(B.A_id) reference (A.id)
 // belongTo  A.C_id <--> C.id    foreignKey(A.C_id) reference (C.id)
-func foreignKeyConfig(foreignKey, references string) *field.RelateConfig {
+func foreignKeyConfig(relationshipType field.RelationshipType, foreignKey, references string) *field.RelateConfig {
 	relateTag := field.NewGormTag()
 	relateTag.Set("foreignKey", foreignKey)
 	relateTag.Set("references", references)
-	return &field.RelateConfig{GORMTag: relateTag}
+	c := &field.RelateConfig{GORMTag: relateTag}
+	if relationshipType == field.HasMany {
+		c.RelateSlicePointer = true
+		return c
+	}
+	c.RelatePointer = true
+	return c
 }
 
 // Many2ManyConfig A <--> join(B.A_id,B.C_id) <--> C   foreignKey(A.C_id) reference (C.id)
@@ -120,5 +126,5 @@ func many2ManyConfig(foreignKey, joinForeignKey, joinTable, JoinReferences, refe
 	relateTag.Set("joinForeignKey", joinForeignKey)
 	relateTag.Set("references", references)
 	relateTag.Set("JoinReferences", JoinReferences)
-	return &field.RelateConfig{GORMTag: relateTag}
+	return &field.RelateConfig{GORMTag: relateTag, RelateSlicePointer: true}
 }
