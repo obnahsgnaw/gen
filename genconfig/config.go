@@ -5,10 +5,39 @@ import (
 	"gorm.io/gen"
 	"gorm.io/gen/field"
 	"gorm.io/gen/internal/generate"
+	"log"
+	"os"
 )
 
+const tmpl = `
+package migrate
+
+import "{{.pkg}}"
+import "gorm.io/gorm"
+
+func Models() []any {
+	return []any{
+		// models...
+		{{ range $k,$v := .models -}}
+		&model.{{ $v -}}{},
+		{{ end }}
+	}
+}
+func Init(db *gorm.DB) error {
+	// config...
+    {{ range .joins -}}
+	if err := db.SetupJoinTable(&model.{{.Model}}{}, "{{.Filed}}", &model.{{.JoinModel}}{}); err != nil {
+		return err
+	}
+	{{ end -}}
+	return nil
+}
+`
+
 type Config struct {
-	items map[string]ModelConfig
+	items           map[string]ModelConfig
+	modelNames      []string
+	joinTableConfig []JoinTable
 }
 type ModelConfig struct {
 	TableName     string
@@ -50,7 +79,7 @@ func (c *Config) Build(g *gen.Generator) (modelNames []string, joinTableConfig [
 	var queryStructMetas = make(map[string]*generate.QueryStructMeta)
 	for tableName, config := range c.items {
 		queryStructMetas[tableName] = g.GenerateModelAs(tableName, config.ModelName)
-		modelNames = append(modelNames, queryStructMetas[tableName].ModelStructName)
+		c.modelNames = append(c.modelNames, queryStructMetas[tableName].ModelStructName)
 	}
 	for tableName, config := range c.items {
 		if config.Relationships != nil {
@@ -75,7 +104,7 @@ func (c *Config) Build(g *gen.Generator) (modelNames []string, joinTableConfig [
 					}
 					joinMeta, ok1 := queryStructMetas[relationship.Join.Table]
 					if ok1 {
-						joinTableConfig = append(joinTableConfig, JoinTable{queryStructMetas[tableName].ModelStructName, relationship.ModelFieldName, joinMeta.ModelStructName})
+						c.joinTableConfig = append(c.joinTableConfig, JoinTable{queryStructMetas[tableName].ModelStructName, relationship.ModelFieldName, joinMeta.ModelStructName})
 					}
 					opts = append(opts, gen.FieldRelate(
 						relationship.Type,
@@ -98,7 +127,24 @@ func (c *Config) Build(g *gen.Generator) (modelNames []string, joinTableConfig [
 	}
 	g.ApplyBasic(metas...)
 
+	modelNames = c.modelNames
+	joinTableConfig = c.joinTableConfig
 	return
+}
+
+func (c *Config) Write(modelImportPath, to string) {
+	log.Print("generate migrate model...")
+	var data = make(map[string]interface{})
+	data["pkg"] = modelImportPath
+	data["models"] = c.modelNames
+	data["joins"] = c.joinTableConfig
+	if writed, err := write(tmpl, to, data); err != nil {
+		println(err.Error())
+		os.Exit(3)
+	} else {
+		log.Print("generate migrate file: ", writed)
+	}
+	log.Print("generate migrate model done")
 }
 
 // ForeignKeyConfig
